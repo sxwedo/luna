@@ -1,0 +1,51 @@
+[package]
+name = "luna"
+version = "0.1.0"
+edition = "2021"
+authors = ["sxwedo <sxwedo@gmail.com>"]
+license = "MIT"
+description = "The remaining light of your LLM quotas"
+repository = "https://github.com/sxwedo/luna"
+homepage = "https://github.com/sxwedo/luna"
+readme = "README.md"
+keywords = ["llm", "quota", "cli", "gemini", "tui"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+tokio = { version = "1.43", features = ["full"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+clap = { version = "4.5", features = ["derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2.0"
+anyhow = "1.0"
+comfy-table = "7.1"
+colored = "3.0"
+directories = "6.0"
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.8"
+url = "2.5"
+async-trait = "0.1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+dialoguer = "0.11"
+ratatui = "0.29"
+crossterm = "0.28"
+unicode-width = "0.2"
+toml = "0.8"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.2"
+security-framework-sys = "2.14"
+core-foundation = "0.10"
+
+[dev-dependencies]
+tempfile = "3.17"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
