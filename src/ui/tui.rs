@@ -610,7 +610,10 @@ fn render_tui_statusbar(f: &mut Frame, area: Rect, app: &TuiApp) {
 
     // 2. Best ready recommendation
     if let Some((ready_label, pct)) = insights.best_ready {
-        spans.push(Span::styled("  ·  ", Style::default().fg(to_ratatui_color(palette::MUTED))));
+        spans.push(Span::styled(
+            "  ·  ",
+            Style::default().fg(to_ratatui_color(palette::MUTED)),
+        ));
         spans.push(Span::styled(
             "✦ Ready: ",
             Style::default()
@@ -626,7 +629,10 @@ fn render_tui_statusbar(f: &mut Frame, area: Rect, app: &TuiApp) {
 
     // 3. Next upcoming reset
     if let Some((reset_label, win_name, time_str)) = insights.next_reset {
-        spans.push(Span::styled("  ·  ", Style::default().fg(to_ratatui_color(palette::MUTED))));
+        spans.push(Span::styled(
+            "  ·  ",
+            Style::default().fg(to_ratatui_color(palette::MUTED)),
+        ));
         spans.push(Span::styled(
             "⏱ Next reset: ",
             Style::default()
@@ -641,7 +647,10 @@ fn render_tui_statusbar(f: &mut Frame, area: Rect, app: &TuiApp) {
     }
 
     // 4. Refresh countdown & shortcuts
-    spans.push(Span::styled("  ·  ", Style::default().fg(to_ratatui_color(palette::MUTED))));
+    spans.push(Span::styled(
+        "  ·  ",
+        Style::default().fg(to_ratatui_color(palette::MUTED)),
+    ));
     let refresh_str = if app.is_refreshing {
         "Refreshing...".to_string()
     } else {
