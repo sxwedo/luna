@@ -31,16 +31,19 @@ pub struct TuiApp {
     pub diffs: HashMap<String, AccountDiff>,
     pub frame_tick: usize,
     pub countdown_seconds: usize,
+    pub refresh_secs: usize,
     pub is_refreshing: bool,
 }
 
 impl TuiApp {
-    pub fn new(initial_quotas: Vec<AccountQuota>) -> Self {
+    pub fn new(initial_quotas: Vec<AccountQuota>, refresh_secs: u64) -> Self {
+        let refresh_secs = refresh_secs.max(1) as usize;
         Self {
             quotas: initial_quotas,
             diffs: HashMap::new(),
             frame_tick: 0,
-            countdown_seconds: 60,
+            countdown_seconds: refresh_secs,
+            refresh_secs,
             is_refreshing: false,
         }
     }
@@ -52,6 +55,7 @@ pub async fn run_watch_tui(
     filter_provider: Option<String>,
     filter_account: Option<String>,
     initial_quotas: Vec<AccountQuota>,
+    refresh_secs: u64,
 ) -> anyhow::Result<()> {
     enable_raw_mode()?;
     let mut stdout = stdout();
@@ -59,7 +63,7 @@ pub async fn run_watch_tui(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = TuiApp::new(initial_quotas);
+    let mut app = TuiApp::new(initial_quotas, refresh_secs);
     let mut previous_quotas: Option<Vec<AccountQuota>> = None;
 
     let (tx, mut rx) = mpsc::channel::<Vec<AccountQuota>>(2);
@@ -77,7 +81,7 @@ pub async fn run_watch_tui(
                 }
                 previous_quotas = Some(fresh.clone());
                 app.quotas = fresh;
-                app.countdown_seconds = 60;
+                app.countdown_seconds = app.refresh_secs;
                 app.is_refreshing = false;
             }
 

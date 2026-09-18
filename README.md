@@ -53,24 +53,26 @@ The file is created empty on first use if missing. Permissions are `0600`.
 ## Usage
 
 ```bash
+luna                               # live TUI, refresh every 60s
+luna -i 0                          # print once and exit
+luna -i 30                         # live TUI, refresh every 30s
 luna login                         # pick a provider, then sign in
-luna sniff                         # import Antigravity from macOS Keychain
-luna status                        # cards (default)
-luna status --watch                # live TUI, refresh every 60s
-luna status --format table
-luna status --format json          # scripts, Raycast, CI
-luna status -p antigravity
+luna sniff                         # import Antigravity / Grok CLI credentials
+luna --format table -i 0
+luna --format json -i 0            # scripts, Raycast, CI
+luna -p antigravity
 luna list
 luna logout                        # interactive; --account for scripts
 ```
 
-`login` is interactive. It does not default to Google. Current login surface: **Google Antigravity** (OAuth PKCE) and **智谱 GLM** (API key).
+`login` is interactive. It does not default to Google. Current login surface: **Google Antigravity** (OAuth), **Grok / xAI** (OAuth, or sniff `~/.grok/auth.json`), and **智谱 GLM** (API key).
 
 ## What it reads
 
 | Provider | Auth | Windows |
 | --- | --- | --- |
 | Google Antigravity | OAuth, Keychain sniff | Gemini 5H / Weekly, Claude/GPT 5H / Weekly |
+| Grok / xAI | OAuth, `~/.grok/auth.json` | Weekly (and Extra if enabled) |
 | 智谱 GLM | API key (bigmodel.cn / z.ai) | session + search quota |
 
 Antigravity talks to `retrieveUserQuotaSummary` (daily first, then sandbox, then prod). Live 5H beats stub 100% windows. Replica jitter inside the same reset cycle is clamped so a bar does not flicker 1.4% ↔ 1.9%.
@@ -79,7 +81,7 @@ OAuth lives in `~/.config/luna/config.toml`. Accounts live in the OS config dir 
 
 ## Watch
 
-`luna status --watch` opens an alternate-screen TUI.
+`luna` opens an alternate-screen TUI (refresh every 60s; `-i 0` prints once).
 
 - Dual column above ~140 cells, otherwise one
 - Names are not truncated (`Claude/GPT Weekly` stays whole)

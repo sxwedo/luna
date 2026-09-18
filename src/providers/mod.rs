@@ -2,6 +2,8 @@
 pub mod antigravity;
 #[path = "claude.rs"]
 pub mod claude;
+#[path = "grok.rs"]
+pub mod grok;
 #[path = "openai.rs"]
 pub mod openai;
 #[path = "zhipu.rs"]
@@ -71,6 +73,7 @@ impl ProviderRegistry {
             ProviderId::OpenAI => Arc::new(openai::OpenAiProvider),
             ProviderId::Claude => Arc::new(claude::ClaudeProvider),
             ProviderId::Zhipu => Arc::new(zhipu::ZhipuProvider),
+            ProviderId::Grok => Arc::new(grok::GrokProvider),
             ProviderId::Copilot | ProviderId::Custom => Arc::new(openai::OpenAiProvider),
         }
     }

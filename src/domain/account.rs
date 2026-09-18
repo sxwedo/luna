@@ -12,6 +12,7 @@ pub enum ProviderId {
     Claude,
     Copilot,
     Zhipu,
+    Grok,
     Custom,
 }
 
@@ -23,17 +24,18 @@ pub enum LoginKind {
 }
 
 impl ProviderId {
-    pub const ALL: [ProviderId; 5] = [
+    pub const ALL: [ProviderId; 6] = [
         Self::Antigravity,
         Self::OpenAI,
         Self::Claude,
         Self::Copilot,
         Self::Zhipu,
+        Self::Grok,
     ];
 
     /// Providers with working login flows. Others are parsed/filtered but not
     /// yet offered in the interactive picker.
-    pub const LOGIN_SUPPORTED: [ProviderId; 2] = [Self::Antigravity, Self::Zhipu];
+    pub const LOGIN_SUPPORTED: [ProviderId; 3] = [Self::Antigravity, Self::Grok, Self::Zhipu];
 
     pub fn supports_login(self) -> bool {
         Self::LOGIN_SUPPORTED.contains(&self)
@@ -46,6 +48,7 @@ impl ProviderId {
             Self::Claude => "claude",
             Self::Copilot => "copilot",
             Self::Zhipu => "zhipu",
+            Self::Grok => "grok",
             Self::Custom => "custom",
         }
     }
@@ -57,13 +60,14 @@ impl ProviderId {
             Self::Claude => "Anthropic Claude",
             Self::Copilot => "GitHub Copilot",
             Self::Zhipu => "智谱 GLM",
+            Self::Grok => "Grok / xAI",
             Self::Custom => "Custom",
         }
     }
 
     pub fn login_kind(self) -> LoginKind {
         match self {
-            Self::Antigravity => LoginKind::OAuth,
+            Self::Antigravity | Self::Grok => LoginKind::OAuth,
             Self::OpenAI | Self::Claude | Self::Copilot | Self::Zhipu | Self::Custom => {
                 LoginKind::ApiKey
             }
@@ -87,6 +91,7 @@ impl std::str::FromStr for ProviderId {
             "claude" | "anthropic" => Ok(Self::Claude),
             "copilot" | "github" => Ok(Self::Copilot),
             "zhipu" | "glm" | "bigmodel" | "zai" | "智谱" => Ok(Self::Zhipu),
+            "grok" | "xai" | "x.ai" => Ok(Self::Grok),
             "custom" => Ok(Self::Custom),
             other => Err(format!("Unknown provider: {}", other)),
         }
@@ -148,9 +153,10 @@ mod tests {
     fn login_picker_only_offers_supported_providers() {
         assert_eq!(
             ProviderId::LOGIN_SUPPORTED,
-            [ProviderId::Antigravity, ProviderId::Zhipu]
+            [ProviderId::Antigravity, ProviderId::Grok, ProviderId::Zhipu]
         );
         assert!(ProviderId::Antigravity.supports_login());
+        assert!(ProviderId::Grok.supports_login());
         assert!(ProviderId::Zhipu.supports_login());
         assert!(!ProviderId::OpenAI.supports_login());
         assert!(!ProviderId::Claude.supports_login());

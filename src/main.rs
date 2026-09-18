@@ -6,6 +6,7 @@ use comfy_table::presets::UTF8_FULL;
 use comfy_table::{Cell, Color, ContentArrangement, Table};
 use dialoguer::{theme::ColorfulTheme, Confirm, Input, Password, Select};
 use reqwest::Client;
+use std::io::{self, IsTerminal};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinSet;
@@ -14,6 +15,7 @@ use luna::domain::account::{Account, LoginKind, ProviderId};
 use luna::domain::credential::AuthCredential;
 use luna::domain::quota::AccountQuota;
 use luna::providers::antigravity::AntigravityProvider;
+use luna::providers::grok::GrokProvider;
 use luna::providers::ProviderRegistry;
 use luna::storage::vault::AccountVault;
 use luna::ui::card::render_quota_cards_animated;
@@ -38,9 +40,9 @@ struct Cli {
     #[arg(short, long, value_enum, default_value_t = OutputFormat::Cards, global = true)]
     format: OutputFormat,
 
-    /// Live watch mode with automatic refresh
-    #[arg(short, long, global = true)]
-    watch: bool,
+    /// Refresh interval in seconds. Default 60 (live TUI). 0 prints once and exits.
+    #[arg(short = 'i', long = "interval", global = true, default_value_t = 60)]
+    interval: u64,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Default)]
@@ -63,7 +65,7 @@ enum Commands {
 
     /// Interactive login. Omit --provider to pick from a list.
     Login {
-        /// Provider to log into (antigravity, zhipu)
+        /// Provider to log into (antigravity, grok, zhipu)
         #[arg(short, long)]
         provider: Option<String>,
     },
@@ -116,7 +118,7 @@ async fn main() -> Result<()> {
                 cli.provider.as_deref(),
                 account.as_deref(),
                 cli.format,
-                cli.watch,
+                cli.interval,
             )
             .await?;
         }
@@ -202,7 +204,7 @@ async fn handle_status(
     filter_provider: Option<&str>,
     filter_account: Option<&str>,
     format: OutputFormat,
-    watch: bool,
+    interval: u64,
 ) -> Result<()> {
     let client = http_client()?;
     migrate_placeholder_accounts(vault, &client).await?;
@@ -244,6 +246,8 @@ async fn handle_status(
         }
         return Ok(());
     }
+
+    let watch = interval > 0 && format == OutputFormat::Cards && io::stdout().is_terminal();
 
     // Animated fetching indicator for interactive terminals
     if format != OutputFormat::Json && !watch {
@@ -319,6 +323,7 @@ async fn handle_status(
             filter_provider.map(str::to_string),
             filter_account.map(str::to_string),
             quotas,
+            interval,
         )
         .await;
     }
@@ -374,6 +379,32 @@ async fn handle_login(vault: &AccountVault, provider_name: Option<&str>) -> Resu
             vault.save(account)?;
             println!("Account saved.");
         }
+        LoginKind::OAuth if p_id == ProviderId::Grok => {
+            if let Ok(Some(existing)) = GrokProvider::sniff_installed_credentials() {
+                let import = Confirm::with_theme(&ColorfulTheme::default())
+                    .with_prompt(format!(
+                        "发现本地 Grok CLI 已登录 {}，直接导入?",
+                        existing.label
+                    ))
+                    .default(true)
+                    .interact()?;
+                if import {
+                    println!("{}", format!("Imported {}", existing.label).green().bold());
+                    vault.save(existing)?;
+                    println!("Account saved.");
+                    return Ok(());
+                }
+            }
+            let account = GrokProvider::login_interactive()
+                .await
+                .map_err(|e| anyhow::anyhow!(e))?;
+            println!(
+                "{}",
+                format!("Logged in as {}", account.label).green().bold()
+            );
+            vault.save(account)?;
+            println!("Account saved.");
+        }
         LoginKind::ApiKey => {
             let theme = ColorfulTheme::default();
             let label: String = Input::with_theme(&theme)
@@ -405,32 +436,47 @@ async fn handle_login(vault: &AccountVault, provider_name: Option<&str>) -> Resu
 async fn handle_sniff(vault: &AccountVault) -> Result<()> {
     println!(
         "{}",
-        "Scanning macOS Keychain for Antigravity IDE credentials...".dimmed()
+        "Scanning local credentials (Antigravity Keychain, Grok CLI)...".dimmed()
     );
 
     let client = http_client()?;
+    let mut found = 0usize;
+
     match AntigravityProvider::sniff_installed_credentials(&client).await {
         Ok(Some(account)) => {
             println!(
                 "{}",
-                format!("Found IDE account: {}", account.label)
+                format!("Found Antigravity: {}", account.label)
                     .green()
                     .bold()
             );
             let _ = vault.remove("antigravity:imported-keychain");
             vault.save(account)?;
-            println!("Account registered. Run `luna status` to check quotas.");
+            found += 1;
         }
-        Ok(None) => {
+        Ok(None) => {}
+        Err(err) => println!("{}", format!("Antigravity sniff: {err}").yellow()),
+    }
+
+    match GrokProvider::sniff_installed_credentials() {
+        Ok(Some(account)) => {
             println!(
                 "{}",
-                "No Antigravity credentials found in macOS Keychain.".yellow()
+                format!("Found Grok CLI: {}", account.label).green().bold()
             );
-            println!("  Make sure Google Antigravity IDE is installed and signed in.");
+            vault.save(account)?;
+            found += 1;
         }
-        Err(e) => {
-            println!("{}", format!("Error scanning Keychain: {}", e).red());
-        }
+        Ok(None) => {}
+        Err(err) => println!("{}", format!("Grok sniff: {err}").yellow()),
+    }
+
+    if found > 0 {
+        println!("Account registered. Run `luna status` to check quotas.");
+    } else {
+        println!("{}", "No local credentials found.".yellow());
+        println!("  Antigravity: sign in to the IDE, or run `luna login`.");
+        println!("  Grok: run `grok login`, or `luna login` and pick Grok.");
     }
 
     Ok(())
