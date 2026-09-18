@@ -187,7 +187,54 @@ impl AccountDiff {
     }
 }
 
-/// Computes differences between two consecutive quota snapshot lists.
+/// Global fleet scheduling insights for bottom statusbar summary.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FleetInsight {
+    /// Best available account with highest remaining headroom (label, remaining_percent).
+    pub best_ready: Option<(String, f64)>,
+    /// Earliest upcoming reset for depleted/consumed quotas (account_label, window_name, time_str).
+    pub next_reset: Option<(String, String, String)>,
+}
+
+pub fn compute_fleet_insights(quotas: &[AccountQuota]) -> FleetInsight {
+    let now = Utc::now();
+    let valid: Vec<&AccountQuota> = quotas
+        .iter()
+        .filter(|q| q.error.is_none() && !q.windows.is_empty())
+        .collect();
+
+    // 1. Best ready account (account whose bottleneck remaining is the highest)
+    let best_ready = valid
+        .iter()
+        .filter_map(|q| q.bottleneck().map(|b| (&q.label, b.remaining_percent)))
+        .max_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(label, pct)| (label.clone(), pct));
+
+    // 2. Earliest reset among active/consumed windows (< 95%)
+    let mut upcoming: Vec<(&str, &str, chrono::Duration, String)> = Vec::new();
+    for q in &valid {
+        for w in &q.windows {
+            if w.remaining_percent < 95.0 {
+                if let Some(reset) = w.resets_at {
+                    if reset > now {
+                        let duration = reset.signed_duration_since(now);
+                        upcoming.push((&q.label, &w.name, duration, w.format_reset_time()));
+                    }
+                }
+            }
+        }
+    }
+    upcoming.sort_by_key(|item| item.2);
+    let next_reset = upcoming
+        .first()
+        .map(|(acc, win, _, time)| (acc.to_string(), win.to_string(), time.clone()));
+
+    FleetInsight {
+        best_ready,
+        next_reset,
+    }
+}
+
 pub fn compute_quota_diffs(
     previous: &[AccountQuota],
     current: &[AccountQuota],

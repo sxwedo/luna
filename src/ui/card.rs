@@ -113,7 +113,7 @@ pub fn render_quota_cards_animated(
         }
     }
 
-    render_bottlenecks_box(quotas, divider_width);
+    render_fleet_summary_line(quotas);
 }
 
 /// Builds an individual card as a vector of lines with exact visible width.
@@ -351,58 +351,34 @@ fn format_enclosed_line(
     )
 }
 
-fn render_bottlenecks_box(quotas: &[AccountQuota], total_width: usize) {
-    let mut bottlenecks: Vec<_> = quotas
-        .iter()
-        .filter_map(|q| q.bottleneck().map(|b| (&q.label, b)))
-        .collect();
+fn render_fleet_summary_line(quotas: &[AccountQuota]) {
+    let insights = crate::domain::quota::compute_fleet_insights(quotas);
+    let mut parts = Vec::new();
 
-    if bottlenecks.is_empty() {
-        return;
+    if let Some((ready_label, pct)) = insights.best_ready {
+        parts.push(format!(
+            "{} {}",
+            rgb("✦ Ready:", palette::EMERALD).bold(),
+            rgb(&format!("{} ({:.0}%)", ready_label, pct), palette::WHITE)
+        ));
     }
 
-    bottlenecks.sort_by(|a, b| a.1.remaining_percent.total_cmp(&b.1.remaining_percent));
+    if let Some((reset_label, win_name, time_str)) = insights.next_reset {
+        parts.push(format!(
+            "{} {}",
+            rgb("⏱ Next reset:", palette::AMBER).bold(),
+            rgb(
+                &format!("{} in {} ({})", win_name, time_str, reset_label),
+                palette::WHITE
+            )
+        ));
+    }
 
-    let header_title = " ⚠ BOTTLENECK LIMITS (Shortest remaining quotas first) ";
-    let fill_len = total_width.saturating_sub(header_title.chars().count() + 3);
-
-    println!(
-        "  ╭─{}{}{}",
-        rgb(header_title, palette::AMBER).bold(),
-        rgb(&"─".repeat(fill_len), palette::BORDER),
-        rgb("╮", palette::BORDER)
-    );
-    println!(
-        "  {}",
-        format_enclosed_line("", total_width, "│", palette::BORDER)
-    );
-
-    for (label, bn) in bottlenecks {
-        let label_str = format!("{:<25}", label);
-        let name_str = format!("{:<16}", bn.name);
-        let pct = format_percent(bn.remaining_percent);
-        let reset_str = format!("resets in {}", bn.format_reset_time());
-
-        let row_content = format!(
-            "   • {} {} {}   {}",
-            rgb(&label_str, palette::WHITE),
-            rgb(&name_str, palette::MUTED),
-            pct,
-            rgb(&reset_str, palette::MUTED)
-        );
+    if !parts.is_empty() {
         println!(
             "  {}",
-            format_enclosed_line(&row_content, total_width, "│", palette::BORDER)
+            parts.join(&format!("  {}  ", rgb("·", palette::MUTED)))
         );
+        println!();
     }
-
-    println!(
-        "  {}",
-        format_enclosed_line("", total_width, "│", palette::BORDER)
-    );
-    println!(
-        "  ╰{}╯",
-        rgb(&"─".repeat(total_width.saturating_sub(2)), palette::BORDER)
-    );
-    println!();
 }

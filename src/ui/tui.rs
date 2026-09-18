@@ -217,15 +217,13 @@ fn ui(f: &mut Frame, app: &TuiApp) {
         .constraints([
             Constraint::Length(2),
             Constraint::Min(8),
-            Constraint::Length(if app.quotas.is_empty() { 0 } else { 7 }),
             Constraint::Length(1),
         ])
         .split(area);
 
     render_tui_header(f, chunks[0], app);
     render_responsive_cards_grid(f, chunks[1], app);
-    render_tui_bottlenecks(f, chunks[2], app);
-    render_tui_statusbar(f, chunks[3], app);
+    render_tui_statusbar(f, chunks[2], app);
 }
 
 fn render_tui_header(f: &mut Frame, area: Rect, app: &TuiApp) {
@@ -588,123 +586,76 @@ fn render_orbit_border(f: &mut Frame, area: Rect, title: &str, frame: usize) {
     }
 }
 
-fn render_tui_bottlenecks(f: &mut Frame, area: Rect, app: &TuiApp) {
-    if app.quotas.is_empty() {
-        return;
-    }
-
-    let mut bottlenecks: Vec<_> = app
-        .quotas
-        .iter()
-        .filter_map(|q| q.bottleneck().map(|b| (&q.label, b)))
-        .collect();
-
-    if bottlenecks.is_empty() {
-        return;
-    }
-
-    bottlenecks.sort_by(|a, b| a.1.remaining_percent.total_cmp(&b.1.remaining_percent));
-
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(to_ratatui_color(palette::BORDER)))
-        .title(Span::styled(
-            " ⚠ BOTTLENECK LIMITS (Shortest remaining quotas first) ",
-            Style::default()
-                .fg(to_ratatui_color(palette::AMBER))
-                .add_modifier(Modifier::BOLD),
-        ));
-
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
-    for (idx, (label, bn)) in bottlenecks.iter().take(4).enumerate() {
-        if idx as u16 >= inner.height {
-            break;
-        }
-
-        let row_rect = Rect {
-            x: inner.x,
-            y: inner.y + idx as u16,
-            width: inner.width,
-            height: 1,
-        };
-
-        let row_slots = Layout::default()
-            .direction(Direction::Horizontal)
-            .constraints([
-                Constraint::Length(30), // Label
-                Constraint::Length(22), // Window name (expanded to prevent truncation)
-                Constraint::Length(8),  // Pct
-                Constraint::Min(20),    // Reset time
-            ])
-            .split(row_rect);
-
-        let pct_color = if bn.remaining_percent >= 60.0 {
-            to_ratatui_color(palette::EMERALD)
-        } else if bn.remaining_percent >= 25.0 {
-            to_ratatui_color(palette::AMBER)
-        } else {
-            to_ratatui_color(palette::ROSE)
-        };
-
-        // Slot 0: Bullet + Label
-        let p0 = Paragraph::new(Line::from(vec![
-            Span::styled(
-                "   • ",
-                Style::default().fg(to_ratatui_color(palette::MUTED)),
-            ),
-            Span::styled(label.as_str(), Style::default().fg(Color::White)),
-        ]));
-        f.render_widget(p0, row_slots[0]);
-
-        // Slot 1: Window name
-        let p1 = Paragraph::new(Span::styled(
-            &bn.name,
-            Style::default().fg(to_ratatui_color(palette::MUTED)),
-        ));
-        f.render_widget(p1, row_slots[1]);
-
-        // Slot 2: Pct
-        let p2 = Paragraph::new(Span::styled(
-            format!("{:>6.1}%", bn.remaining_percent),
-            Style::default().fg(pct_color).add_modifier(Modifier::BOLD),
-        ));
-        f.render_widget(p2, row_slots[2]);
-
-        // Slot 3: Reset
-        let p3 = Paragraph::new(Span::styled(
-            format!("resets in {}", bn.format_reset_time()),
-            Style::default().fg(to_ratatui_color(palette::MUTED)),
-        ));
-        f.render_widget(p3, row_slots[3]);
-    }
-}
-
 fn render_tui_statusbar(f: &mut Frame, area: Rect, app: &TuiApp) {
     let spinner_frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
     let frame_char = spinner_frames[app.frame_tick % spinner_frames.len()];
 
-    let status_line = Line::from(vec![
-        Span::styled(
-            format!(" {} ", frame_char),
-            Style::default().fg(to_ratatui_color(palette::ACCENT_BLUE)),
-        ),
-        Span::styled(
-            if app.is_refreshing {
-                "Refreshing quotas across accounts...".to_string()
-            } else {
-                format!("Auto-refresh in {:>2}s", app.countdown_seconds)
-            },
-            Style::default().fg(to_ratatui_color(palette::MUTED)),
-        ),
-        Span::styled(
-            "   [r] Refresh now   [q] Quit",
-            Style::default().fg(to_ratatui_color(palette::BORDER)),
-        ),
-    ]);
+    let active_count = app.quotas.iter().filter(|q| q.error.is_none()).count();
+    let total_count = app.quotas.len();
+    let insights = crate::domain::quota::compute_fleet_insights(&app.quotas);
 
-    let p = Paragraph::new(status_line);
+    let mut spans = Vec::new();
+
+    // 1. Spinner & fleet count
+    spans.push(Span::styled(
+        format!(" {} ", frame_char),
+        Style::default().fg(to_ratatui_color(palette::ACCENT_BLUE)),
+    ));
+    let count_text = if active_count == total_count {
+        format!("{} accounts", total_count)
+    } else {
+        format!("{}/{} active", active_count, total_count)
+    };
+    spans.push(Span::styled(count_text, Style::default().fg(Color::White)));
+
+    // 2. Best ready recommendation
+    if let Some((ready_label, pct)) = insights.best_ready {
+        spans.push(Span::styled("  ·  ", Style::default().fg(to_ratatui_color(palette::MUTED))));
+        spans.push(Span::styled(
+            "✦ Ready: ",
+            Style::default()
+                .fg(to_ratatui_color(palette::EMERALD))
+                .add_modifier(Modifier::BOLD),
+        ));
+        let short_label = ready_label.split('@').next().unwrap_or(&ready_label);
+        spans.push(Span::styled(
+            format!("{} ({:.0}%)", short_label, pct),
+            Style::default().fg(Color::White),
+        ));
+    }
+
+    // 3. Next upcoming reset
+    if let Some((reset_label, win_name, time_str)) = insights.next_reset {
+        spans.push(Span::styled("  ·  ", Style::default().fg(to_ratatui_color(palette::MUTED))));
+        spans.push(Span::styled(
+            "⏱ Next reset: ",
+            Style::default()
+                .fg(to_ratatui_color(palette::AMBER))
+                .add_modifier(Modifier::BOLD),
+        ));
+        let short_label = reset_label.split('@').next().unwrap_or(&reset_label);
+        spans.push(Span::styled(
+            format!("{} in {} ({})", win_name, time_str, short_label),
+            Style::default().fg(Color::White),
+        ));
+    }
+
+    // 4. Refresh countdown & shortcuts
+    spans.push(Span::styled("  ·  ", Style::default().fg(to_ratatui_color(palette::MUTED))));
+    let refresh_str = if app.is_refreshing {
+        "Refreshing...".to_string()
+    } else {
+        format!("Auto-refresh in {:>2}s", app.countdown_seconds)
+    };
+    spans.push(Span::styled(
+        refresh_str,
+        Style::default().fg(to_ratatui_color(palette::MUTED)),
+    ));
+    spans.push(Span::styled(
+        "   [r] Refresh   [q] Quit",
+        Style::default().fg(to_ratatui_color(palette::BORDER)),
+    ));
+
+    let p = Paragraph::new(Line::from(spans));
     f.render_widget(p, area);
 }
